@@ -30,7 +30,7 @@ CFragmentedSampleReader::CFragmentedSampleReader(AP4_ByteStream* input,
                                                  AP4_Track* track,
                                                  AP4_UI32 streamId,
                                                  Adaptive_CencSingleSampleDecrypter* ssd,
-                                                 const SSD::SSD_DECRYPTER::SSD_CAPS& dcaps)
+                                                 const SSD::SSD_DECRYPTER::SSD_CAPS& dcaps, const AP4_ProtectionKeyMap &keyMap)
   : AP4_LinearReader{*movie, input},
     m_track{track},
     m_streamId{streamId},
@@ -60,6 +60,12 @@ CFragmentedSampleReader::CFragmentedSampleReader(AP4_ByteStream* input,
       }
     }
   }
+  if (m_defaultKey) {
+    const AP4_DataBuffer* clearKey = keyMap.GetKeyByKid(m_defaultKey);
+    if (clearKey) {
+      m_clearKey.SetData(clearKey->GetData(), clearKey->GetDataSize());
+    }
+  }
 
   if (m_singleSampleDecryptor)
     m_poolId = m_singleSampleDecryptor->AddPool();
@@ -87,6 +93,7 @@ CFragmentedSampleReader::~CFragmentedSampleReader()
 {
   if (m_singleSampleDecryptor)
     m_singleSampleDecryptor->RemovePool(m_poolId);
+
   delete m_decrypter;
   delete m_codecHandler;
 }
@@ -108,8 +115,7 @@ AP4_Result CFragmentedSampleReader::ReadSample()
   if (!m_codecHandler || !m_codecHandler->ReadNextSample(m_sample, m_sampleData))
   {
     bool useDecryptingDecoder =
-        m_protectedDesc &&
-        (m_decrypterCaps.flags & SSD::SSD_DECRYPTER::SSD_CAPS::SSD_SECURE_PATH) != 0;
+        m_protectedDesc && (m_clearKey.GetDataSize() > 0 || (m_decrypterCaps.flags & SSD::SSD_DECRYPTER::SSD_CAPS::SSD_SECURE_PATH) != 0);
     bool decrypterPresent{m_decrypter != nullptr};
     if (AP4_FAILED(result = ReadNextSample(m_track->GetId(), m_sample,
                                            (m_decrypter || useDecryptingDecoder) ? m_encrypted
@@ -410,34 +416,49 @@ AP4_Result CFragmentedSampleReader::ProcessMoof(AP4_ContainerAtom* moof,
         return AP4_ERROR_INVALID_FORMAT;
 
       bool reset_iv(false);
+
       if (AP4_FAILED(result = AP4_CencSampleInfoTable::Create(m_protectedDesc, traf, algorithm_id,
                                                               reset_iv, *m_FragmentStream,
                                                               moof_offset, sample_table)))
         // we assume unencrypted fragment here
         goto SUCCESS;
-
-      if (AP4_FAILED(result = AP4_CencSampleDecrypter::Create(sample_table, algorithm_id, 0, 0, 0,
-                                                              reset_iv, m_singleSampleDecryptor,
-                                                              m_decrypter)))
+      if (m_clearKey.GetDataSize() > 0)
       {
-        return result;
+        if (AP4_FAILED(result = AP4_CencSampleDecrypter::Create(sample_table,
+                                  algorithm_id,
+                                  m_clearKey.GetData(),
+                                  m_clearKey.GetDataSize(),
+                                  &AP4_DefaultBlockCipherFactory::Instance,
+                                  reset_iv,
+                                  m_clearKeySingleSampleDecryptor,
+                                  m_decrypter)))
+        {
+          return result;
+        }
       }
-
-      // Inform decrypter of pattern decryption (CBCS)
-      AP4_UI32 schemeType = m_protectedDesc->GetSchemeType();
-      if (schemeType == AP4_PROTECTION_SCHEME_TYPE_CENC || schemeType == AP4_PROTECTION_SCHEME_TYPE_CBCS)
+      else
       {
-        m_readerCryptoInfo.m_cryptBlocks = sample_table->GetCryptByteBlock();
-        m_readerCryptoInfo.m_skipBlocks = sample_table->GetSkipByteBlock();
+        if (AP4_FAILED(result = AP4_CencSampleDecrypter::Create(sample_table, algorithm_id, 0, 0, 0,
+                                                                reset_iv, m_singleSampleDecryptor,
+                                                                m_decrypter)))
+        {
+          return result;
+        }
+        // Inform decrypter of pattern decryption (CBCS)
+        AP4_UI32 schemeType = m_protectedDesc->GetSchemeType();
+        if (schemeType == AP4_PROTECTION_SCHEME_TYPE_CENC || schemeType == AP4_PROTECTION_SCHEME_TYPE_CBCS)
+        {
+          m_readerCryptoInfo.m_cryptBlocks = sample_table->GetCryptByteBlock();
+          m_readerCryptoInfo.m_skipBlocks = sample_table->GetSkipByteBlock();
 
-        if (schemeType == AP4_PROTECTION_SCHEME_TYPE_CENC)
-          m_readerCryptoInfo.m_mode = CryptoMode::AES_CTR;
-        else
-          m_readerCryptoInfo.m_mode = CryptoMode::AES_CBC;
-        
-        m_singleSampleDecryptor->SetEncryptionMode(m_readerCryptoInfo.m_mode);
-        m_singleSampleDecryptor->SetCrypto(m_readerCryptoInfo.m_cryptBlocks,
-                                           m_readerCryptoInfo.m_skipBlocks);
+          if (schemeType == AP4_PROTECTION_SCHEME_TYPE_CENC)
+            m_readerCryptoInfo.m_mode = CryptoMode::AES_CTR;
+          else
+            m_readerCryptoInfo.m_mode = CryptoMode::AES_CBC;
+
+          m_singleSampleDecryptor->SetEncryptionMode(m_readerCryptoInfo.m_mode);
+          m_singleSampleDecryptor->SetCrypto(m_readerCryptoInfo.m_cryptBlocks,       m_readerCryptoInfo.m_skipBlocks);
+        }
       }
     }
   }

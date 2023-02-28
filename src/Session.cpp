@@ -413,10 +413,77 @@ bool CSession::InitializeDRM(bool addDefaultKID /* = false */)
   m_cdmSessions.resize(m_adaptiveTree->current_period_->psshSets_.size());
   memset(&m_cdmSessions.front(), 0, sizeof(CCdmSession));
 
+  if (m_kodiProps.m_licenseType == "org.w3.clearkey")
+  {
+    std::string licenseKeys{m_kodiProps.m_licenseKeys};
+    constexpr int KID_KEY_SIZE = 16;
+    if (licenseKeys.empty())
+    {
+      LOG::Log(LOGERROR, "Invalid license_key");
+      return false;
+    }
+    std::vector<std::string> blocks{StringUtils::Split(licenseKeys, '|')};
+
+    for (const std::string &block : blocks)
+    {
+      std::vector<std::string> kidAndKey{StringUtils::Split(block, ':')};
+      if (kidAndKey.size() < 2)
+      {
+        LOG::Log(LOGERROR, "Invalid key format");
+        return false;
+      }
+      unsigned char kid[KID_KEY_SIZE] = {};
+      unsigned char key[KID_KEY_SIZE] = {};
+      if (AP4_ParseHex(kidAndKey[0].c_str(), kid, KID_KEY_SIZE))
+      {
+        LOG::Log(LOGWARNING, "Invalid license_key kid");
+        continue;
+      }
+      if (AP4_ParseHex(kidAndKey[1].c_str(), key, KID_KEY_SIZE))
+      {
+        LOG::Log(LOGWARNING, "Invalid license_key key");
+        continue;
+      }
+      m_keyMap.SetKeyForKid(kid, key, KID_KEY_SIZE);
+
+      LOG::Log(LOGINFO, "Setting kid and key %s", block.c_str());
+    }
+  }
   // Try to initialize an SingleSampleDecryptor
-  if (m_adaptiveTree->current_period_->encryptionState_)
+  else if(m_adaptiveTree->current_period_->encryptionState_)
   {
     std::string licenseKey{m_kodiProps.m_licenseKey};
+    std::string licenseKeys{m_kodiProps.m_licenseKeys};
+    constexpr int KID_KEY_SIZE = 16;
+    if (!licenseKeys.empty())
+    {
+      std::vector<std::string> blocks{StringUtils::Split(licenseKeys, '|')};
+      for (const std::string &block : blocks)
+      {
+        std::vector<std::string> kidAndKey{StringUtils::Split(block, ':')};
+        if (kidAndKey.size() < 2)
+        {
+          LOG::Log(LOGERROR, "Invalid key format");
+          return false;
+        }
+        unsigned char kid[KID_KEY_SIZE] = {};
+        unsigned char key[KID_KEY_SIZE] = {};
+        if (AP4_ParseHex(kidAndKey[0].c_str(), kid, KID_KEY_SIZE))
+        {
+          LOG::Log(LOGWARNING, "Invalid license_key kid");
+          continue;
+        }
+        if (AP4_ParseHex(kidAndKey[1].c_str(), key, KID_KEY_SIZE))
+        {
+          LOG::Log(LOGWARNING, "Invalid license_key key");
+          continue;
+        }
+        m_keyMap.SetKeyForKid(kid, key, KID_KEY_SIZE);
+
+        LOG::Log(LOGINFO, "Setting kid and key %s", block.c_str());
+      }
+    }
+    
 
     if (licenseKey.empty())
       licenseKey = m_adaptiveTree->license_url_;

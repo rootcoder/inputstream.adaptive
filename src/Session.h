@@ -325,6 +325,8 @@ public:
    */
   void OnStreamChange(adaptive::AdaptiveStream* adStream) override;
 
+  const AP4_ProtectionKeyMap& GetClearKeyMap() const { return m_keyMap; }
+
 protected:
   /*! \brief If available, read the duration and timestamp of the next fragment and
    *         set the related members
@@ -377,6 +379,7 @@ private:
   bool m_settingNoSecureDecoder{false};
   bool m_settingIsHdcpOverride{false};
   bool m_firstPeriodInitialized{false};
+  AP4_ProtectionKeyMap m_keyMap{};
   std::unique_ptr<CKodiHost> m_KodiHost;
 };
 } // namespace SESSION

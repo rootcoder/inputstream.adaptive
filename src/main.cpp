@@ -391,7 +391,7 @@ bool CInputStreamAdaptive::OpenStream(int streamid)
     auto caps = m_session->GetDecrypterCaps(stream->m_adStream.getRepresentation()->pssh_set_);
 
     stream->SetReader(std::make_unique<CFragmentedSampleReader>(
-        stream->GetAdByteStream(), movie, track, streamid, sampleDecrypter, caps));
+        stream->GetAdByteStream(), movie, track, streamid, sampleDecrypter, caps, m_session->GetClearKeyMap()));
   }
   else
   {

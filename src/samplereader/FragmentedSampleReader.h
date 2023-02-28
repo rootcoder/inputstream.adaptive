@@ -22,7 +22,7 @@ public:
                          AP4_Track* track,
                          AP4_UI32 streamId,
                          Adaptive_CencSingleSampleDecrypter* ssd,
-                         const SSD::SSD_DECRYPTER::SSD_CAPS& dcaps);
+                         const SSD::SSD_DECRYPTER::SSD_CAPS& dcaps, const AP4_ProtectionKeyMap& keyMap);
 
   ~CFragmentedSampleReader();
 
@@ -82,8 +82,10 @@ private:
   const AP4_UI08* m_defaultKey{nullptr};
   AP4_ProtectedSampleDescription* m_protectedDesc{nullptr};
   Adaptive_CencSingleSampleDecrypter* m_singleSampleDecryptor;
+  AP4_CencSingleSampleDecrypter *m_clearKeySingleSampleDecryptor{nullptr};
   AP4_CencSampleDecrypter* m_decrypter{nullptr};
   uint64_t m_nextDuration{0};
   uint64_t m_nextTimestamp{0};
   ReaderCryptoInfo m_readerCryptoInfo{};
+  AP4_DataBuffer m_clearKey;
 };
