@@ -251,10 +251,7 @@ public:
   /*! \brief Check if there is an initial discontinuity sequence number
    *  \return True if there is an initial discontinuity sequence number
    */
-  bool HasInitialSequence() const
-  {
-    return m_adaptiveTree->initial_sequence_.has_value();
-  }
+  bool HasInitialSequence() const { return m_adaptiveTree->initial_sequence_.has_value(); }
 
   /*! \brief Get the initial discontinuity sequence number
    *  \return The sequence number of the first discontinuity sequence
@@ -343,6 +340,8 @@ public:
    */
   AP4_Movie* CreateMovieAtom(CStream* stream);
 
+  const AP4_ProtectionKeyMap& GetClearKeyMap() const { return m_keyMap; }
+
 protected:
   /*!
    * \brief Event raised when the current segment is changed and
@@ -397,5 +396,6 @@ private:
   uint8_t m_drmConfig{0};
   bool m_settingNoSecureDecoder{false};
   bool m_settingIsHdcpOverride{false};
+  AP4_ProtectionKeyMap m_keyMap{};
 };
 } // namespace SESSION

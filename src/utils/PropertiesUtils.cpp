@@ -22,6 +22,7 @@ namespace
 // clang-format off
 constexpr std::string_view PROP_LICENSE_TYPE = "inputstream.adaptive.license_type";
 constexpr std::string_view PROP_LICENSE_KEY = "inputstream.adaptive.license_key";
+constexpr std::string_view PROP_LICENSE_KEYS = "inputstream.adaptive.license_keys";
 constexpr std::string_view PROP_LICENSE_DATA = "inputstream.adaptive.license_data";
 constexpr std::string_view PROP_LICENSE_FLAGS = "inputstream.adaptive.license_flags";
 constexpr std::string_view PROP_SERVER_CERT = "inputstream.adaptive.server_certificate";
@@ -61,6 +62,11 @@ KodiProperties UTILS::PROPERTIES::ParseKodiProperties(
     {
       props.m_licenseType = prop.second;
     }
+    else if (prop.first == PROP_LICENSE_KEYS)
+    {
+      props.m_licenseKeys = prop.second;
+      logPropValRedacted = true;
+    }
     else if (prop.first == PROP_LICENSE_KEY)
     {
       props.m_licenseKey = prop.second;
@@ -83,7 +89,8 @@ KodiProperties UTILS::PROPERTIES::ParseKodiProperties(
       props.m_serverCertificate = prop.second;
       logPropValRedacted = true;
     }
-    else if (prop.first == PROP_MANIFEST_TYPE) //! @todo: deprecated, to be removed on next Kodi release
+    else if (prop.first ==
+             PROP_MANIFEST_TYPE) //! @todo: deprecated, to be removed on next Kodi release
     {
       LOG::Log(
           LOGWARNING,
@@ -102,7 +109,8 @@ KodiProperties UTILS::PROPERTIES::ParseKodiProperties(
       else
         LOG::LogF(LOGERROR, "Manifest type \"%s\" is not supported", prop.second.c_str());
     }
-    else if (prop.first == PROP_MANIFEST_UPD_PARAM) //! @todo: deprecated, to be removed on next Kodi release
+    else if (prop.first ==
+             PROP_MANIFEST_UPD_PARAM) //! @todo: deprecated, to be removed on next Kodi release
     {
       LOG::Log(
           LOGWARNING,

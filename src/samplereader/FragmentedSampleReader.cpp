@@ -9,16 +9,16 @@
 #include "FragmentedSampleReader.h"
 
 #include "AdaptiveByteStream.h"
-#include "codechandler/AudioCodecHandler.h"
 #include "codechandler/AV1CodecHandler.h"
 #include "codechandler/AVCCodecHandler.h"
+#include "codechandler/AudioCodecHandler.h"
 #include "codechandler/HEVCCodecHandler.h"
 #include "codechandler/TTMLCodecHandler.h"
 #include "codechandler/VP9CodecHandler.h"
 #include "codechandler/WebVTTCodecHandler.h"
-#include "utils/log.h"
 #include "utils/CharArrayParser.h"
 #include "utils/Utils.h"
+#include "utils/log.h"
 
 using namespace UTILS;
 
@@ -34,7 +34,8 @@ CFragmentedSampleReader::CFragmentedSampleReader(AP4_ByteStream* input,
                                                  AP4_Track* track,
                                                  AP4_UI32 streamId,
                                                  Adaptive_CencSingleSampleDecrypter* ssd,
-                                                 const DRM::IDecrypter::DecrypterCapabilites& dcaps)
+                                                 const DRM::IDecrypter::DecrypterCapabilites& dcaps,
+                                                 const AP4_ProtectionKeyMap& keyMap)
   : AP4_LinearReader{*movie, input},
     m_track{track},
     m_streamId{streamId},
@@ -62,6 +63,15 @@ CFragmentedSampleReader::CFragmentedSampleReader(AP4_ByteStream* input,
         if (piff)
           m_defaultKey = piff->GetDefaultKid();
       }
+    }
+  }
+
+  if (m_defaultKey)
+  {
+    const AP4_DataBuffer* clearKey = keyMap.GetKeyByKid(m_defaultKey);
+    if (clearKey)
+    {
+      m_clearKey.SetData(clearKey->GetData(), clearKey->GetDataSize());
     }
   }
 
@@ -96,7 +106,10 @@ CFragmentedSampleReader::~CFragmentedSampleReader()
 {
   if (m_singleSampleDecryptor)
     m_singleSampleDecryptor->RemovePool(m_poolId);
-  delete m_decrypter;
+  if (m_clearkey_decrypter)
+    delete m_clearkey_decrypter;
+  if (m_decrypter)
+    delete m_decrypter;
   delete m_codecHandler;
 }
 
@@ -121,7 +134,8 @@ AP4_Result CFragmentedSampleReader::ReadSample()
   {
     bool useDecryptingDecoder =
         m_protectedDesc &&
-        (m_decrypterCaps.flags & DRM::IDecrypter::DecrypterCapabilites::SSD_SECURE_PATH) != 0;
+        (m_clearKey.GetDataSize() > 0 ||
+         (m_decrypterCaps.flags & DRM::IDecrypter::DecrypterCapabilites::SSD_SECURE_PATH) != 0);
     bool decrypterPresent{m_decrypter != nullptr};
     if (AP4_FAILED(result = ReadNextSample(m_track->GetId(), m_sample,
                                            (m_decrypter || useDecryptingDecoder) ? m_encrypted
@@ -158,8 +172,29 @@ AP4_Result CFragmentedSampleReader::ReadSample()
       m_encrypted.SetData(m_sampleData.GetData(), m_sampleData.GetDataSize());
     else if (decrypterPresent && m_decrypter == nullptr && !useDecryptingDecoder)
       m_sampleData.SetData(m_encrypted.GetData(), m_encrypted.GetDataSize());
-
-    if (m_decrypter)
+    if (m_clearkey_decrypter)
+    {
+      m_sampleData.Reserve(m_encrypted.GetDataSize());
+      if (AP4_FAILED(result =
+                         m_clearkey_decrypter->DecryptSampleData(m_encrypted, m_sampleData, NULL)))
+      {
+        LOG::Log(LOGERROR, "Decrypt Sample returns failure!");
+        if (++m_failCount > 50)
+        {
+          Reset(true);
+          return result;
+        }
+        else
+        {
+          m_sampleData.SetDataSize(0);
+        }
+      }
+      else
+      {
+        m_failCount = 0;
+      }
+    }
+    else if (m_decrypter)
     {
       m_sampleData.Reserve(m_encrypted.GetDataSize());
       if (AP4_FAILED(result =
@@ -197,7 +232,7 @@ AP4_Result CFragmentedSampleReader::ReadSample()
 
   m_dts = (m_sample.GetDts() * m_timeBaseExt) / m_timeBaseInt;
   m_pts = (m_sample.GetCts() * m_timeBaseExt) / m_timeBaseInt;
-  
+
   if (m_startPts == STREAM_NOPTS_VALUE)
     SetStartPTS(m_pts - GetPTSDiff());
 
@@ -308,7 +343,8 @@ AP4_Result CFragmentedSampleReader::ProcessMoof(AP4_ContainerAtom* moof,
     }
     else if (ids[0] != m_track->GetId())
     {
-      LOG::LogF(LOGDEBUG, "Track ID does not match! Expected: %u Got: %u", m_track->GetId(), ids[0]);
+      LOG::LogF(LOGDEBUG, "Track ID does not match! Expected: %u Got: %u", m_track->GetId(),
+                ids[0]);
       return AP4_ERROR_NO_SUCH_ITEM;
     }
   }
@@ -362,7 +398,8 @@ AP4_Result CFragmentedSampleReader::ProcessMoof(AP4_ContainerAtom* moof,
       AP4_CencSampleInfoTable* sample_table{nullptr};
       AP4_UI32 algorithm_id = 0;
 
-      delete m_decrypter;
+      if (m_decrypter)
+        delete m_decrypter;
       m_decrypter = 0;
 
       AP4_ContainerAtom* traf =
@@ -378,37 +415,53 @@ AP4_Result CFragmentedSampleReader::ProcessMoof(AP4_ContainerAtom* moof,
         // we assume unencrypted fragment here
         goto SUCCESS;
 
-      if (!m_singleSampleDecryptor)
-        return AP4_ERROR_INVALID_PARAMETERS;
-
-      m_decrypter = new CAdaptiveCencSampleDecrypter(m_singleSampleDecryptor, sample_table);
-
-      // Inform decrypter of pattern decryption (CBCS)
-      AP4_UI32 schemeType = m_protectedDesc->GetSchemeType();
-      if (schemeType == AP4_PROTECTION_SCHEME_TYPE_CENC ||
-          schemeType == AP4_PROTECTION_SCHEME_TYPE_PIFF ||
-          schemeType == AP4_PROTECTION_SCHEME_TYPE_CBCS)
+      if (m_clearKey.GetDataSize() > 0)
       {
-        m_readerCryptoInfo.m_cryptBlocks = sample_table->GetCryptByteBlock();
-        m_readerCryptoInfo.m_skipBlocks = sample_table->GetSkipByteBlock();
+        AP4_CencSingleSampleDecrypter* singlesample_decrypter = NULL;
+        if (AP4_FAILED(result = AP4_CencSampleDecrypter::Create(
+                           sample_table, algorithm_id, m_clearKey.GetData(),
+                           m_clearKey.GetDataSize(), &AP4_DefaultBlockCipherFactory::Instance,
+                           reset_iv, singlesample_decrypter, m_clearkey_decrypter)))
+        {
+          return result;
+        }
 
-        if (schemeType == AP4_PROTECTION_SCHEME_TYPE_CENC ||
-            schemeType == AP4_PROTECTION_SCHEME_TYPE_PIFF)
-          m_readerCryptoInfo.m_mode = CryptoMode::AES_CTR;
-        else
-          m_readerCryptoInfo.m_mode = CryptoMode::AES_CBC;
+        LOG::LogF(LOGINFO, "Decrypting using clearKey.");
       }
-      else if (schemeType == AP4_PROTECTION_SCHEME_TYPE_CBC1 ||
-               schemeType == AP4_PROTECTION_SCHEME_TYPE_CENS)
+      else
       {
-        LOG::LogF(LOGERROR, "Protection scheme %u not implemented.", schemeType);
+        if (!m_singleSampleDecryptor)
+          return AP4_ERROR_INVALID_PARAMETERS;
+
+        m_decrypter = new CAdaptiveCencSampleDecrypter(m_singleSampleDecryptor, sample_table);
+
+        // Inform decrypter of pattern decryption (CBCS)
+        AP4_UI32 schemeType = m_protectedDesc->GetSchemeType();
+        if (schemeType == AP4_PROTECTION_SCHEME_TYPE_CENC ||
+            schemeType == AP4_PROTECTION_SCHEME_TYPE_PIFF ||
+            schemeType == AP4_PROTECTION_SCHEME_TYPE_CBCS)
+        {
+          m_readerCryptoInfo.m_cryptBlocks = sample_table->GetCryptByteBlock();
+          m_readerCryptoInfo.m_skipBlocks = sample_table->GetSkipByteBlock();
+
+          if (schemeType == AP4_PROTECTION_SCHEME_TYPE_CENC ||
+              schemeType == AP4_PROTECTION_SCHEME_TYPE_PIFF)
+            m_readerCryptoInfo.m_mode = CryptoMode::AES_CTR;
+          else
+            m_readerCryptoInfo.m_mode = CryptoMode::AES_CBC;
+        }
+        else if (schemeType == AP4_PROTECTION_SCHEME_TYPE_CBC1 ||
+                 schemeType == AP4_PROTECTION_SCHEME_TYPE_CENS)
+        {
+          LOG::LogF(LOGERROR, "Protection scheme %u not implemented.", schemeType);
+        }
       }
     }
   }
 SUCCESS:
   if (m_singleSampleDecryptor && m_codecHandler)
   {
-     m_singleSampleDecryptor->SetFragmentInfo(
+    m_singleSampleDecryptor->SetFragmentInfo(
         m_poolId, m_defaultKey, m_codecHandler->m_naluLengthSize, m_codecHandler->m_extraData,
         m_decrypterCaps.flags, m_readerCryptoInfo);
   }
@@ -444,7 +497,7 @@ void CFragmentedSampleReader::UpdateSampleDescription()
 
   LOG::LogF(LOGDEBUG, "Codec fourcc: %s (%u)", CODEC::FourCCToString(desc->GetFormat()).c_str(),
             desc->GetFormat());
-  
+
   if (AP4_DYNAMIC_CAST(AP4_AudioSampleDescription, desc))
   {
     // Audio sample of any format

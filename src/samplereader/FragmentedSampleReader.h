@@ -8,22 +8,23 @@
 
 #pragma once
 
+#include "SampleReader.h"
 #include "codechandler/CodecHandler.h"
 #include "common/AdaptiveCencSampleDecrypter.h"
 #include "common/AdaptiveDecrypter.h"
 #include "decrypters/IDecrypter.h"
 #include "utils/log.h"
-#include "SampleReader.h"
 
 class ATTR_DLL_LOCAL CFragmentedSampleReader : public ISampleReader, public AP4_LinearReader
 {
 public:
   CFragmentedSampleReader(AP4_ByteStream* input,
-                         AP4_Movie* movie,
-                         AP4_Track* track,
-                         AP4_UI32 streamId,
-                         Adaptive_CencSingleSampleDecrypter* ssd,
-                         const DRM::IDecrypter::DecrypterCapabilites& dcaps);
+                          AP4_Movie* movie,
+                          AP4_Track* track,
+                          AP4_UI32 streamId,
+                          Adaptive_CencSingleSampleDecrypter* ssd,
+                          const DRM::IDecrypter::DecrypterCapabilites& dcaps,
+                          const AP4_ProtectionKeyMap& keyMap);
 
   ~CFragmentedSampleReader();
 
@@ -85,5 +86,7 @@ private:
   AP4_ProtectedSampleDescription* m_protectedDesc{nullptr};
   Adaptive_CencSingleSampleDecrypter* m_singleSampleDecryptor;
   CAdaptiveCencSampleDecrypter* m_decrypter{nullptr};
+  AP4_CencSampleDecrypter* m_clearkey_decrypter{nullptr};
   CryptoInfo m_readerCryptoInfo{};
+  AP4_DataBuffer m_clearKey;
 };
