@@ -8,7 +8,7 @@
 
 #pragma once
 
-#ifndef INPUTSTREAM_TEST_BUILD
+#if 0
 #include <kodi/AddonBase.h>
 #else
 #include "kodi/tools/StringUtils.h"
@@ -33,7 +33,7 @@ namespace LOG
 template<typename... Args>
 inline void Log(const LogLevel level, const char* format, Args&&... args)
 {
-#ifndef INPUTSTREAM_TEST_BUILD
+#if 0
   ADDON_LOG addonLevel;
 
   switch (level)
@@ -65,7 +65,6 @@ inline void Log(const LogLevel level, const char* format, Args&&... args)
   case LogLevel::LOGERROR:
     std::cout << "[ LOG-ERROR ] " << logStr << std::endl;
     break;
-/*
   case LogLevel::LOGWARNING:
     std::cout << "[ LOG-WARN  ] " << logStr << std::endl;
     break;
@@ -74,7 +73,7 @@ inline void Log(const LogLevel level, const char* format, Args&&... args)
     break;
   case LogLevel::LOGDEBUG:
     std::cout << "[ LOG-DEBUG ] " << logStr << std::endl;
-*/
+
   default:
     break;
   }

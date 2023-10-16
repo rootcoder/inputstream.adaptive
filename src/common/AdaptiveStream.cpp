@@ -225,6 +225,7 @@ bool AdaptiveStream::PrepareNextDownload(DownloadInfo& downloadInfo)
 
   SEGMENTBUFFER* segBuffer = segment_buffers_[valid_segment_buffers_];
   ++valid_segment_buffers_;
+  std::cout << "PrepareNextDownload: " << '\n';
 
   // Clear existing data
   segBuffer->buffer.clear();
@@ -284,6 +285,7 @@ bool AdaptiveStream::PrepareDownload(const PLAYLIST::CRepresentation* rep,
   }
 
   downloadInfo.m_url = streamUrl;
+  std::cout << "AdaptiveStream::PrepareDownload " << streamUrl << '\n';
   return true;
 }
 
@@ -347,37 +349,46 @@ void adaptive::AdaptiveStream::WaitWorker()
 
 void AdaptiveStream::worker()
 {
+  std::cout << " AdaptiveStream::worker() \n";
   std::unique_lock<std::mutex> lckdl(thread_data_->mutex_dl_);
   worker_processing_ = false;
   thread_data_->signal_dl_.notify_one();
   do
   {
+    std::cout << "AdaptiveStream::worker() do \n";
     while (!thread_data_->thread_stop_ &&
            (state_ != RUNNING || valid_segment_buffers_ >= available_segment_buffers_))
     {
+      std::cout << "AdaptiveStream::worker(): state_ != RUNNING = " << (state_ != RUNNING) << " valid_segment_buffers_ = " << valid_segment_buffers_ << " available_segment_buffers_ " << available_segment_buffers_ << '\n';
       thread_data_->signal_dl_.wait(lckdl);
+       std::cout << "AdaptiveStream::worker(depois): state_ != RUNNING = " << (state_ != RUNNING) << " valid_segment_buffers_ = " << valid_segment_buffers_ << " available_segment_buffers_ " << available_segment_buffers_ << '\n';
     }
+
+    std::cout << "AdaptiveStream::worker : ... " << (!thread_data_->thread_stop_)  << '\n';
 
     if (!thread_data_->thread_stop_)
     {
       worker_processing_ = true;
 
       DownloadInfo downloadInfo;
+      std::cout << "AdaptiveStream::worker(): if (!PrepareNextDownload(downloadInfo))" << '\n';
       if (!PrepareNextDownload(downloadInfo))
       {
         worker_processing_ = false;
         continue;
       }
 
+      std::cout << "AdaptiveStream::worker depois de PrepareNextDownload: " << downloadInfo.m_url.c_str() << '\n';
+
       // tell the main thread that we have processed prepare_download;
       thread_data_->signal_dl_.notify_one();
       lckdl.unlock();
-
+       std::cout << "AdaptiveStream::worker unlock: " << downloadInfo.m_url.c_str() << '\n';
       //! @todo: for live content we should calculate max attempts and sleep timing
       //! based on segment duration / playlist updates timing
       size_t maxAttempts = tree_.IsLive() ? 10 : 6;
       std::chrono::milliseconds msSleep = tree_.IsLive() ? 1000ms : 500ms;
-
+             std::cout << "AdaptiveStream::worker unlock 2: " << downloadInfo.m_url.c_str() << '\n';
       //! @todo: Some streaming software offers subtitle tracks with missing fragments, usually live tv
       //! When a programme is broadcasted that has subtitles, subtitles fragments are offered,
       //! Ensure we continue with the next segment after one retry on errors
@@ -392,8 +403,11 @@ void AdaptiveStream::worker()
       while (state_ != STOPPED)
       {
         isSegmentDownloaded = DownloadSegment(downloadInfo);
+        std::cout << "AdaptiveStream::worker inside!!!\n";
         if (isSegmentDownloaded || downloadAttempts == maxAttempts || state_ == STOPPED)
           break;
+
+        
 
         //! @todo: forcing thread sleep block the thread also while the state_ / thread_stop_ change values
         //! we have to interrupt the sleep when it happens
@@ -401,11 +415,13 @@ void AdaptiveStream::worker()
         downloadAttempts++;
         LOG::Log(LOGWARNING, "[AS-%u] Segment download failed, attempt %zu...", clsId, downloadAttempts);
       }
-
+      std::cout << "AdaptiveStream::worker: lckdl.lock();\n";
       lckdl.lock();
+      std::cout << "AdaptiveStream::worker: depois lckdl.lock();\n";
 
       if (!isSegmentDownloaded)
       {
+        std::cout << "xxx" << "\n";
         std::lock_guard<std::mutex> lckrw(thread_data_->mutex_rw_);
         // Download cancelled or cannot download the file
         state_ = STOPPED;
@@ -415,6 +431,7 @@ void AdaptiveStream::worker()
       worker_processing_ = false;
       thread_data_->signal_rw_.notify_all();
     }
+    std::cout << "AdaptiveStream::worker end 2: " <<  (!thread_data_->thread_stop_) << '\n';
   } while (!thread_data_->thread_stop_);
 
   worker_processing_ = false;
@@ -596,6 +613,8 @@ bool AdaptiveStream::start_stream()
 {
   if (!current_rep_)
     return false;
+
+  std::cout << " AdaptiveStream::start_stream()" << '\n';
 
   //! @todo: the assured_buffer_duration_ and max_buffer_duration_
   //! isnt implemeted correctly and need to be reworked,
@@ -793,8 +812,10 @@ bool AdaptiveStream::ensureSegment()
   if ((!worker_processing_ || valid_segment_buffers_ > 1) &&
       segment_read_pos_ >= segment_buffers_[0]->buffer.size())
   {
+    std::cout << "ensureSegment bools: worker: " << !worker_processing_ << " valid_buffers: " << valid_segment_buffers_ << " segment pos: " << segment_read_pos_ << " buffer size: " << segment_buffers_[0]->buffer.size() << '\n';
     // wait until worker is ready for new segment
     std::unique_lock<std::mutex> lck(thread_data_->mutex_dl_);
+     std::cout << "ensureSegment bools: worker apos: " << !worker_processing_ << " valid_buffers: " << valid_segment_buffers_ << " segment pos: " << segment_read_pos_ << " buffer size: " << segment_buffers_[0]->buffer.size() << '\n';
 
     // check if it has been stopped in the meantime (e.g. playback stop)
     if (state_ == STOPPED)
@@ -807,6 +828,7 @@ bool AdaptiveStream::ensureSegment()
     {
       tree_.RefreshSegments(current_period_, current_adp_, current_rep_, current_adp_->GetStreamType());
       lastUpdated_ = std::chrono::system_clock::now();
+      std::cout << "ensureSegment: Refresh segments" << '\n';
     }
 
     if (m_fixateInitialization)
@@ -816,8 +838,19 @@ bool AdaptiveStream::ensureSegment()
     CSegment* nextSegment{nullptr};
     last_rep_ = current_rep_;
 
+    std::cout << "\n----- ensureSegments ----" << '\n';
+    std::cout << "ID = " << current_rep_->GetId() << '\n';
+    for (const auto& segment : current_rep_->SegmentTimeline().GetData())
+    {
+      std::cout << "time = " << segment.m_time << " duration = " << segment.m_duration << " number = " << segment.m_number << '\n';
+      break;
+    }
+
+    std::cout << "/// ----- ensureSegments ----" << '\n';
+
     if (valid_segment_buffers_ > 0)
     {
+       std::cout << "ensureSegment: valid_segment_buffers_" << '\n';
       // Move the segment at initial position 0 to the end, because consumed
       std::rotate(segment_buffers_.begin(), segment_buffers_.begin() + 1,
                   segment_buffers_.begin() + available_segment_buffers_);
@@ -827,6 +860,7 @@ bool AdaptiveStream::ensureSegment()
       // if not, update the current representation
       if (segment_buffers_[0]->rep != current_rep_)
       {
+        std::cout << "ensureSegment: segment_buffers_[0]->rep != current_rep_" << '\n';
         current_rep_->SetIsEnabled(false);
         current_rep_ = segment_buffers_[0]->rep;
         current_rep_->SetIsEnabled(true);
@@ -835,17 +869,24 @@ bool AdaptiveStream::ensureSegment()
     }
     if (valid_segment_buffers_ > 0)
     {
+      std::cout << "ensureSegment: valid_segment_buffers_ > 0" << '\n';
       if (!segment_buffers_[0]->segment.IsInitialization())
       {
+        std::cout << "ensureSegment: !segment_buffers_[0]->segment.IsInitialization" << '\n';
         nextSegment = current_rep_->get_segment(static_cast<size_t>(
             segment_buffers_[0]->segment_number - current_rep_->GetStartNumber()));
       }
     }
-    else
+    else {
+      std::cout << "ensureSegment: current_rep_->get_next_segment(current_rep_->current_segment_)" << '\n';
       nextSegment = current_rep_->get_next_segment(current_rep_->current_segment_);
+    }
+
+    std::cout << "ensureSegment (nextSegment != nullptr): " << (nextSegment != nullptr) << '\n';
 
     if (nextSegment)
     {
+      std::cout << "ensureSegment: New Segment" << '\n';
       currentPTSOffset_ =
         (nextSegment->startPTS_ * current_rep_->timescale_ext_) / current_rep_->timescale_int_;
 
@@ -899,6 +940,22 @@ bool AdaptiveStream::ensureSegment()
       // Add to the buffer next future segment
 
       size_t nextsegmentPos = static_cast<size_t>(nextsegno - newRep->GetStartNumber());
+      std::cout << "ensureSegment: nextsegmentPos = " << nextsegmentPos;
+      std::cout << " available_segment_buffers_ = " << available_segment_buffers_;
+      std::cout << " newRep->SegmentTimeline().GetSize() =  " << newRep->SegmentTimeline().GetSize();
+
+      std::cout << "\n----- newRep ### ensureSegments ----" << '\n';
+       std::cout << "ID = " << newRep->GetId() << '\n';
+    for (const auto& segment : newRep->SegmentTimeline().GetData())
+    {
+      std::cout << "time = " << segment.m_time << " duration = " << segment.m_duration << " number = " << segment.m_number << '\n';
+      break;
+    }
+
+      std::cout << "/// ----- newRep ### ensureSegments ----" << '\n';
+
+     
+
       if (nextsegmentPos + available_segment_buffers_ >= newRep->SegmentTimeline().GetSize())
       {
         nextsegmentPos = newRep->SegmentTimeline().GetSize() - available_segment_buffers_;
@@ -906,24 +963,30 @@ bool AdaptiveStream::ensureSegment()
       for (size_t updPos(available_segment_buffers_); updPos < max_buffer_length_; ++updPos)
       {
         const CSegment* futureSegment = newRep->get_segment(nextsegmentPos + updPos);
-
+        
         if (futureSegment)
         {
+          std::cout << "ensureSegment: future " << futureSegment->m_time << " " << futureSegment->m_number << '\n';
           segment_buffers_[updPos]->segment = *futureSegment;
           segment_buffers_[updPos]->segment_number =
               newRep->GetStartNumber() + nextsegmentPos + updPos;
           segment_buffers_[updPos]->rep = newRep;
           ++available_segment_buffers_;
+          
         }
         else
           break;
       }
+      std::cout << "ensureSegment: future " << available_segment_buffers_ << " " << max_buffer_length_ << '\n';
 
       thread_data_->signal_dl_.notify_one();
       // Make sure that we have at least one segment filling
       // Otherwise we lead into a deadlock because first condition is false.
-      if (!valid_segment_buffers_)
+      if (!valid_segment_buffers_) {
+        std::cout << "ensureSegment: !valid_segment_buffers_ " << '\n';
         thread_data_->signal_dl_.wait(lck);
+        std::cout << "ensureSegment [p]: !valid_segment_buffers_ " << '\n';
+      }
 
       if (stream_changed_)
       {

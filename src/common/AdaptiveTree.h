@@ -25,6 +25,7 @@
 #include <string_view>
 #include <thread>
 #include <vector>
+#include <iostream>
 
 #ifdef INPUTSTREAM_TEST_BUILD
 #include "test/KodiStubs.h"
@@ -198,7 +199,9 @@ public:
   /*!
    * \brief Determines if a live manifest needs updates when new segments are requested
    */
-  bool HasManifestUpdatesSegs() const { return m_isLive && m_updateInterval == 0; }
+  bool HasManifestUpdatesSegs() const {
+    return m_isLive && m_updateInterval == 0; 
+  }
 
   /*!
    * \brief Determines if a live manifest needs updates that are handled automatically

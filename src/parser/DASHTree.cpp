@@ -24,6 +24,7 @@
 #include <numeric> // accumulate
 #include <string>
 #include <thread>
+#include <iostream>
 
 using namespace pugi;
 using namespace kodi::tools;
@@ -249,6 +250,7 @@ void adaptive::CDashTree::ParseTagMPDAttribs(pugi::xml_node nodeMPD)
     m_minimumUpdatePeriod = static_cast<uint64_t>(duration);
     m_allowInsertLiveSegments = m_minimumUpdatePeriod == 0;
     m_updateInterval = static_cast<uint64_t>(duration * 1000);
+    std::cout << "minimum update period " << m_updateInterval << '\n';
   }
 
   if (mediaPresDuration == 0)
@@ -1069,17 +1071,24 @@ void adaptive::CDashTree::ParseTagRepresentation(pugi::xml_node nodeRepr,
         seg.startPTS_ = segStartPts;
         seg.m_time = segStartPts;
 
+        std::cout << "\n------- repr->SegmentTimeline().GetData().push_back(seg);  ---------\n";
+        std::cout << "Segment | m_number = " << seg.m_number << " pts = " << segStartPts <<  " " << repr->GetId() << '\n';
+
         for (size_t pos{0}; pos < segmentsCount; pos++)
         {
           uint32_t* tlDuration = adpSet->SegmentTimelineDuration().Get(pos);
           uint32_t duration = tlDuration ? *tlDuration : segTplDuration;
           seg.m_duration = duration;
+          //std::cout << "time = " << seg.m_time << " duration = " << duration <<  " number = " << seg.m_number << '\n';
           repr->SegmentTimeline().GetData().push_back(seg);
 
           seg.m_number += 1;
           seg.startPTS_ += duration;
           seg.m_time += duration;
+           
         }
+
+        std::cout << "/////------- repr->SegmentTimeline().GetData().push_back(seg);  ---------\n";
 
         const CSegment& lastSeg = repr->SegmentTimeline().GetData().back();
         uint64_t totalSegsDuration = lastSeg.startPTS_ + lastSeg.m_duration;
@@ -1120,15 +1129,18 @@ uint64_t adaptive::CDashTree::ParseTagSegmentTimeline(pugi::xml_node nodeSegTL,
 {
   uint64_t startPts{0};
   uint64_t nextPts{0};
-
+  int i{0};
+  std::cout << "\n------- ParseTagSegmentTimeline [1]  ---------\n";
   // Parse <S> tags - e.g. <S t="3600" d="900000" r="2398"/>
   for (xml_node node : nodeSegTL.children("S"))
   {
     uint64_t time = XML::GetAttribUint64(node, "t");
     uint32_t duration = XML::GetAttribUint32(node, "d");
     uint32_t repeat = XML::GetAttribUint32(node, "r");
-    repeat += 1;
-
+    repeat += 1;    
+    
+    std::cout << "time = " <<  time << " duration = " << duration << " repeat = " << repeat << '\n';
+  
     if (SCTimeline.IsEmpty())
     {
       if (duration > 0)
@@ -1150,11 +1162,15 @@ uint64_t adaptive::CDashTree::ParseTagSegmentTimeline(pugi::xml_node nodeSegTL,
     {
       for (; repeat > 0; --repeat)
       {
+        ++i;
+        std::cout << " time = " << nextPts << " duration = " << duration <<  " i = " << i << '\n';
         SCTimeline.GetData().emplace_back(duration);
         nextPts += duration;
       }
     }
   }
+
+  std::cout << "\n------- ParseTagSegmentTimeline [1]  ---------\n";
 
   return startPts;
 }
@@ -1179,6 +1195,9 @@ uint64_t adaptive::CDashTree::ParseTagSegmentTimeline(xml_node nodeSegTL,
     uint32_t repeat = XML::GetAttribUint32(node, "r");
     repeat += 1;
 
+
+    std::cout << "ParseTagSegmentTimeline [3] " << nextPts << " " << duration << " " << repeat << " " << startNumber << '\n';
+
     CSegment seg;
 
     if (duration > 0 && repeat > 0)
@@ -1201,9 +1220,11 @@ uint64_t adaptive::CDashTree::ParseTagSegmentTimeline(xml_node nodeSegTL,
 
       seg.m_time = nextPts;
       seg.startPTS_ = nextPts;
+      
 
       for (; repeat > 0; --repeat)
       {
+        std::cout << "ParseTagSegmentTimeline [4] " << nextPts << " " << duration << " " << seg.m_number << '\n';
         SCTimeline.GetData().push_back(seg);
         startPts = seg.startPTS_;
 
@@ -1218,6 +1239,8 @@ uint64_t adaptive::CDashTree::ParseTagSegmentTimeline(xml_node nodeSegTL,
       LOG::LogF(LOGDEBUG, "Missing duration / time on <S> child of <SegmentTimeline> tag.");
     }
   }
+
+  std::cout << "------------------------------" << '\n';
 
   return startPts;
 }
@@ -1608,6 +1631,8 @@ void adaptive::CDashTree::RefreshLiveSegments()
     return;
   }
 
+  std::cout << "RefreshLiveSegments: updated manifest" << '\n';
+
   // Update local members for the next manifest update
   m_manifestRespHeaders = resp.headers;
   location_ = updateTree->location_;
@@ -1615,6 +1640,8 @@ void adaptive::CDashTree::RefreshLiveSegments()
   // Youtube returns last smallest number in case the requested data is not available
   if (urlHaveStartNumber && updateTree->m_firstStartNumber < nextStartNumber)
     return;
+
+  std::cout << "RefreshLiveSegments: updated manifest 2" << '\n';
 
   for (size_t index{0}; index < updateTree->m_periods.size(); index++)
   {
@@ -1741,39 +1768,52 @@ void adaptive::CDashTree::RefreshLiveSegments()
               }
               else if (updRepr->GetStartNumber() <= 1)
               {
+                
                 // Full update, be careful with start numbers!
 
                 //! @todo: check if first element or size differs
                 uint64_t segmentId = repr->getCurrentSegmentNumber();
-
+                std::cout << "RefreshLiveSegments: updRepr->GetStartNumber() <= 1 | segment id " << segmentId << " getCurrentSegmentNumberumber " << repr->getCurrentSegmentNumber() << '\n';
+                 std::cout << "------ RefreshLiveSegments ------" << '\n';
                 if (repr->HasSegmentTimeline())
                 {
+                  std::cout << "RefreshLiveSegments: repr->HasSegmentTimeline()" << '\n';
                   uint64_t search_pts = updRepr->SegmentTimeline().Get(0)->m_time;
                   uint64_t misaligned = 0;
+                 
+                  std::cout << "RefreshLiveSegments: search_pts: " << search_pts << '\n';
                   for (const auto& segment : repr->SegmentTimeline().GetData())
                   {
+
+                    std::cout << "time = " << segment.m_time << " duration = " << segment.m_duration << " number = " << segment.m_number << '\n';
                     if (misaligned)
                     {
                       uint64_t ptsDiff = segment.m_time - (&segment - 1)->m_time;
                       // our misalignment is small ( < 2%), let's decrement the start number
-                      if (misaligned < (ptsDiff * 2 / 100))
+                      if (misaligned < (ptsDiff * 2 / 100)) 
                         repr->SetStartNumber(repr->GetStartNumber() - 1);
+                      std::cout << "RefreshLiveSegments: repr->SetStartNumber(repr->GetStartNumber() - 1);" << '\n';
                       break;
                     }
-                    if (segment.m_time == search_pts)
+                    if (segment.m_time == search_pts) {
+                       std::cout << "RefreshLiveSegments: found segment.m_time == search_pts" << '\n';
                       break;
+                    }
                     else if (segment.m_time > search_pts)
                     {
                       if (&repr->SegmentTimeline().GetData().front() == &segment)
                       {
+                         std::cout << "RefreshLiveSegments: &repr->SegmentTimeline().GetData().front() == &segment" << '\n';
                         repr->SetStartNumber(repr->GetStartNumber() - 1);
                         break;
                       }
                       misaligned = search_pts - (&segment - 1)->m_time;
                     }
-                    else
+                    else {
+                      std::cout << "RefreshLiveSegments: repr->SetStartNumber(repr->GetStartNumber() + 1); start = " << repr->GetStartNumber() << '\n';
                       repr->SetStartNumber(repr->GetStartNumber() + 1);
-                  }
+                    }
+                  }                  
                 }
                 else if (updRepr->SegmentTimeline().Get(0)->startPTS_ ==
                           repr->SegmentTimeline().Get(0)->startPTS_)
@@ -1798,23 +1838,33 @@ void adaptive::CDashTree::RefreshLiveSegments()
                 }
 
                 updRepr->SegmentTimeline().GetData().swap(repr->SegmentTimeline().GetData());
-                if (segmentId == SEGMENT_NO_NUMBER || segmentId < repr->GetStartNumber())
+                if (segmentId == SEGMENT_NO_NUMBER || segmentId < repr->GetStartNumber()) {
                   repr->current_segment_ = nullptr;
+                    std::cout << "RefreshLiveSegments: repr->current_segment_ = nullptr;\n";
+                }
                 else
                 {
                   if (segmentId >= repr->GetStartNumber() + repr->SegmentTimeline().GetSize())
                     segmentId = repr->GetStartNumber() + repr->SegmentTimeline().GetSize() - 1;
                   repr->current_segment_ =
                       repr->get_segment(static_cast<size_t>(segmentId - repr->GetStartNumber()));
+
+                  std::cout << "RefreshLiveSegments: segmentId >= repr->GetStartNumber() + repr->SegmentTimeline().GetSize())\n";
                 }
 
-                if (repr->IsWaitForSegment() && repr->get_next_segment(repr->current_segment_))
+                std::cout << "RefreshLiveSegments: repr->current_segment_ != null: " << (repr->current_segment_!=nullptr) << " " << (repr->get_next_segment(repr->current_segment_) != nullptr) << '\n';
+
+                if (repr->IsWaitForSegment() && repr->get_next_segment(repr->current_segment_)) {
+                  std::cout << "RefreshLiveSegments: repr->IsWaitForSegment() && repr->get_next_segment(repr->current_segment_)" << '\n';
                   repr->SetIsWaitForSegment(false);
+                }
 
                 LOG::LogF(LOGDEBUG,
                           "Full update without start number (repr. id: %s current start: %u)",
                           updRepr->GetId().data(), repr->GetStartNumber());
                 m_totalTimeSecs = updateTree->m_totalTimeSecs;
+                std::cout << "RefreshLiveSegments: updateTree->m_totalTimeSecs " << m_totalTimeSecs << '\n';
+                std::cout << "/////------ RefreshLiveSegments ------" << '\n';
               }
               else if (updRepr->GetStartNumber() > repr->GetStartNumber() ||
                         (updRepr->GetStartNumber() == repr->GetStartNumber() &&
