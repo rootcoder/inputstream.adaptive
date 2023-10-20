@@ -1138,6 +1138,7 @@ bool CSession::GetNextSample(ISampleReader*& sampleReader)
       // finished we return the dummy reader instead
       if (streamReader->IsReadSampleAsyncWorking())
       {
+        std::cout << "streamReader->IsReadSampleAsyncWorking() " << '\n';
         waiting = stream.get();
         break;
       }
@@ -1152,11 +1153,18 @@ bool CSession::GetNextSample(ISampleReader*& sampleReader)
           // want this to be the internal data's (not segment's) pts of
           // the first segment in period
           streamReader->SetStartPTS(GetTimingStartPTS());
+          std::cout << "streamReader->SetStartPTS(GetTimingStartPTS()); " << GetTimingStartPTS() << std::endl;
         }
         if (AP4_SUCCEEDED(streamReader->Start(isStarted)))
         {
+
+          if (res) {
+            std::cout << "streamReader->DTSorPTS(): dts " << streamReader->DTSorPTS() << " " << res->GetReader()->DTSorPTS() << std::endl;
+          }
+
           if (!res || streamReader->DTSorPTS() < res->GetReader()->DTSorPTS())
           {
+            
             if (stream->m_adStream.waitingForSegment(true))
             {
               waiting = stream.get();
@@ -1165,8 +1173,12 @@ bool CSession::GetNextSample(ISampleReader*& sampleReader)
             {
               res = stream.get();
             }
+          } else {
+            std::cout << "streamReader->DTSorPTS(): no add " << std::endl;
           }
         }
+      } else {
+        std::cout << "EOF" << '\n';
       }
     }
   }

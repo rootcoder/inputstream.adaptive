@@ -422,6 +422,9 @@ DEMUX_PACKET* CInputStreamAdaptive::DemuxRead(void)
   if (!m_session)
     return NULL;
 
+  LOG::Log(LOGINFO, "CInputStreamAdaptive::DemuxRead(void)");
+  
+
   if (m_checkChapterSeek)
   {
     m_checkChapterSeek = false;
@@ -461,6 +464,7 @@ DEMUX_PACKET* CInputStreamAdaptive::DemuxRead(void)
 
       if (sr->IsEncrypted() && srHaveData)
       {
+        std::cout << "Encrypted " << '\n';
         const unsigned int numSubSamples(*(reinterpret_cast<const unsigned int*>(pData)));
         pData += sizeof(numSubSamples);
         p = AllocateEncryptedDemuxPacket(iSize, numSubSamples);
@@ -494,7 +498,7 @@ DEMUX_PACKET* CInputStreamAdaptive::DemuxRead(void)
         std::memcpy(p->pData, pData, iSize);
       }
 
-      //LOG::Log(LOGDEBUG, "DTS: %0.4f, PTS:%0.4f, ID: %u SZ: %d", p->dts, p->pts, p->iStreamId, p->iSize);
+      LOG::Log(LOGDEBUG, "DTS: %0.4f, PTS:%0.4f, ID: %u SZ: %d", p->dts, p->pts, p->iStreamId, p->iSize);
 
       // Start reading the next sample
       sr->ReadSampleAsync();
