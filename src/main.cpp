@@ -266,7 +266,7 @@ bool CInputStreamAdaptive::OpenStream(int streamid)
 
   ContainerType reprContainerType = rep->GetContainerType();
   uint32_t mask = (1U << stream->m_info.GetStreamType()) | m_session->GetIncludedStreamMask();
-  auto reader = ADP::CreateStreamReader(reprContainerType, stream, static_cast<uint32_t>(streamid), mask);
+  auto reader = ADP::CreateStreamReader(reprContainerType, stream, static_cast<uint32_t>(streamid), mask, m_session->GetClearKeyMap());
 
   if (!reader)
   {
@@ -277,7 +277,7 @@ bool CInputStreamAdaptive::OpenStream(int streamid)
   uint16_t psshSetPos = stream->m_adStream.getRepresentation()->m_psshSetPos;
   reader->SetDecrypter(m_session->GetSingleSampleDecryptor(psshSetPos),
                        m_session->GetDecrypterCaps(psshSetPos));
-
+                       
   stream->SetReader(std::move(reader));
 
   if (reprContainerType == ContainerType::TS)

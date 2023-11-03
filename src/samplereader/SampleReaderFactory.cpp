@@ -24,7 +24,7 @@ using namespace PLAYLIST;
 std::unique_ptr<ISampleReader> ADP::CreateStreamReader(PLAYLIST::ContainerType& containerType,
                                                        SESSION::CStream* stream,
                                                        uint32_t streamId,
-                                                       uint32_t includedStreamMask)
+                                                       uint32_t includedStreamMask, const AP4_ProtectionKeyMap& keyMap)
 {
   std::unique_ptr<ISampleReader> reader;
 
@@ -103,7 +103,7 @@ std::unique_ptr<ISampleReader> ADP::CreateStreamReader(PLAYLIST::ContainerType& 
              "Cannot create sample reader due to unhandled representation container type");
     return nullptr;
   }
-
+  reader->SetKeyMap(keyMap);
   if (!reader->Initialize())
   {
     if (containerType == ContainerType::TS &&

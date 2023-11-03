@@ -35,6 +35,6 @@ namespace ADP
 std::unique_ptr<ISampleReader> CreateStreamReader(PLAYLIST::ContainerType& containerType,
                                                   SESSION::CStream* stream,
                                                   uint32_t streamId,
-                                                  uint32_t includedStreamMask);
+                                                  uint32_t includedStreamMask, const AP4_ProtectionKeyMap& keyMap);
 
 } // namespace ADP
