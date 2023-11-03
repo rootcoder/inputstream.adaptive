@@ -109,6 +109,9 @@ public:
   }
 
   void SetObserver(SampleReaderObserver* observer) { m_observer = observer; }
+  virtual void SetKeyMap(const AP4_ProtectionKeyMap& keyMap) {
+
+  }
 
 protected:
   SampleReaderObserver* m_observer{nullptr};

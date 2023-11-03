@@ -50,6 +50,7 @@ public:
 
   std::string_view GetLicenseType() const { return m_licenseType; }
   std::string_view GetLicenseKey() const { return m_licenseKey; }
+  std::string_view GetLicenseKeys() const { return m_licenseKeys; }
   // \brief Get custom PSSH initialization license data
   std::string_view GetLicenseData() const { return m_licenseData; }
 
@@ -92,6 +93,7 @@ public:
 private:
   std::string m_licenseType;
   std::string m_licenseKey;
+  std::string m_licenseKeys;
   std::string m_licenseData;
   bool m_isLicensePersistentStorage{false};
   bool m_isLicenseForceSecureDecoder{false};

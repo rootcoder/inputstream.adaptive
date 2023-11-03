@@ -21,6 +21,7 @@ namespace
 // clang-format off
 constexpr std::string_view PROP_LICENSE_TYPE = "inputstream.adaptive.license_type";
 constexpr std::string_view PROP_LICENSE_KEY = "inputstream.adaptive.license_key";
+constexpr std::string_view PROP_LICENSE_KEYS = "inputstream.adaptive.license_keys";
 constexpr std::string_view PROP_LICENSE_DATA = "inputstream.adaptive.license_data";
 constexpr std::string_view PROP_LICENSE_FLAGS = "inputstream.adaptive.license_flags";
 constexpr std::string_view PROP_SERVER_CERT = "inputstream.adaptive.server_certificate";
@@ -60,6 +61,11 @@ ADP::KODI_PROPS::CCompKodiProps::CCompKodiProps(const std::map<std::string, std:
     else if (prop.first == PROP_LICENSE_KEY)
     {
       m_licenseKey = prop.second;
+      logPropValRedacted = true;
+    }
+    else if (prop.first == PROP_LICENSE_KEYS)
+    {
+      m_licenseKeys = prop.second;
       logPropValRedacted = true;
     }
     else if (prop.first == PROP_LICENSE_DATA)

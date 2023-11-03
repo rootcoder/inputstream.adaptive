@@ -318,6 +318,8 @@ public:
    */
   void OnStreamChange(adaptive::AdaptiveStream* adStream) override;
 
+  const AP4_ProtectionKeyMap& GetClearKeyMap() const { return m_keyMap; }
+
 protected:
   /*!
    * \brief Event raised when the current segment is changed and
@@ -372,5 +374,6 @@ private:
   double m_chapterSeekTime{0.0}; // In seconds
   uint8_t m_mediaTypeMask{0};
   uint8_t m_drmConfig{0};
+  AP4_ProtectionKeyMap m_keyMap{};
 };
 } // namespace SESSION

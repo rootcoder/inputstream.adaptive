@@ -360,9 +360,43 @@ bool CSession::InitializeDRM(bool addDefaultKID /* = false */)
   bool isSecureVideoSession{false};
   m_cdmSessions.resize(m_adaptiveTree->m_currentPeriod->GetPSSHSets().size());
 
-  // Try to initialize an SingleSampleDecryptor
-  if (m_adaptiveTree->m_currentPeriod->GetEncryptionState() !=
-      EncryptionState::UNENCRYPTED)
+ if (CSrvBroker::GetKodiProps().GetLicenseType() == "org.w3.clearkey")
+  {
+    std::string licenseKeys{CSrvBroker::GetKodiProps().GetLicenseKeys()};
+    constexpr int KID_KEY_SIZE = 16;
+    if (licenseKeys.empty())
+    {
+      LOG::Log(LOGERROR, "Invalid license_key");
+      return false;
+    }
+    std::vector<std::string> blocks{StringUtils::Split(licenseKeys, '|')};
+
+    for (const std::string& block : blocks)
+    {
+      std::vector<std::string> kidAndKey{StringUtils::Split(block, ':')};
+      if (kidAndKey.size() < 2)
+      {
+        LOG::Log(LOGERROR, "Invalid key format");
+        return false;
+      }
+      unsigned char kid[KID_KEY_SIZE] = {};
+      unsigned char key[KID_KEY_SIZE] = {};
+      if (AP4_ParseHex(kidAndKey[0].c_str(), kid, KID_KEY_SIZE))
+      {
+        LOG::Log(LOGWARNING, "Invalid license_key kid");
+        continue;
+      }
+      if (AP4_ParseHex(kidAndKey[1].c_str(), key, KID_KEY_SIZE))
+      {
+        LOG::Log(LOGWARNING, "Invalid license_key key");
+        continue;
+      }
+      m_keyMap.SetKeyForKid(kid, key, KID_KEY_SIZE);
+
+      LOG::Log(LOGINFO, "Setting kid and key");
+    }
+  }
+  else if (m_adaptiveTree->m_currentPeriod->GetEncryptionState() != EncryptionState::UNENCRYPTED)
   {
     std::string_view licenseKey = CSrvBroker::GetKodiProps().GetLicenseKey();
 

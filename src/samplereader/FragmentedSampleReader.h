@@ -50,6 +50,7 @@ public:
   bool GetFragmentInfo(uint64_t& duration) override;
   uint32_t GetTimeScale() const override { return m_track->GetMediaTimeScale(); }
   CryptoInfo GetReaderCryptoInfo() const override { return m_readerCryptoInfo; }
+  void SetKeyMap(const AP4_ProtectionKeyMap& keyMap) override {  m_keyMap = &keyMap; }
 
 protected:
   AP4_Result ProcessMoof(AP4_ContainerAtom* moof,
@@ -86,4 +87,7 @@ private:
   Adaptive_CencSingleSampleDecrypter* m_singleSampleDecryptor{nullptr};
   CAdaptiveCencSampleDecrypter* m_decrypter{nullptr};
   CryptoInfo m_readerCryptoInfo{};
+  AP4_CencSampleDecrypter* m_clearkey_decrypter{nullptr};
+  AP4_DataBuffer m_clearKey;
+  const AP4_ProtectionKeyMap *m_keyMap{nullptr};
 };
